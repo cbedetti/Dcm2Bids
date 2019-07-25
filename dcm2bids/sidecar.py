@@ -9,7 +9,7 @@ from collections import defaultdict, OrderedDict
 from fnmatch import fnmatch
 from future.utils import iteritems
 from .structure import Acquisition
-from .utils import DEFAULT, load_json, splitext_
+from .utils import DEFAULT, load_json, splitext_, isDictsEqual
 
 
 class Sidecar(object):
@@ -92,22 +92,40 @@ class SidecarPairing(object):
     """
 
     def __init__(self, sidecars, descriptions,
-            searchMethod=DEFAULT.searchMethod):
+            searchMethod=DEFAULT.searchMethod,
+            dcmTagLabel="",
+            dupMethod=DEFAULT.duplicateMethod):
         self.logger = logging.getLogger(__name__)
 
         self._searchMethod = ""
+        self._dcmTagLabel = ""
+        self._dupMethod = ""
         self.graph = OrderedDict()
         self.aquisitions = []
+        self.dstImage = [[] for i in itertools.repeat(None, len(descriptions))]
 
         self.sidecars = sidecars
         self.descriptions = descriptions
         self.searchMethod = searchMethod
+        self.dcmTagLabel = dcmTagLabel
+        self.dupMethod = dupMethod
 
 
     @property
     def searchMethod(self):
         return self._searchMethod
 
+    @property
+    def dcmTagLabel(self):
+        return self._dcmTagLabel
+
+    @dcmTagLabel.setter
+    def dcmTagLabel(self, value):
+        self._dcmTagLabel = value
+
+    @property
+    def dupMethod(self):
+        return self._dupMethod
 
     @searchMethod.setter
     def searchMethod(self, value):
@@ -127,6 +145,22 @@ class SidecarPairing(object):
             self.logger.warning("Search methods implemented: {}".format(
                     DEFAULT.searchMethodChoices))
 
+    @dupMethod.setter
+    def dupMethod(self, value):
+        """
+        Checks if the duplicate method is implemented
+        Warns the user if not and fall back to default
+        """
+        if value in DEFAULT.dupMethodChoices:
+            self._dupMethod = value
+        else:
+            self._dupMethod = DEFAULT.duplicateMethod
+            self.logger.warning(
+                    "'{}' is not a duplicate method implemented".format(value))
+            self.logger.warning(
+                    "Falling back to default: {}".format(DEFAULT.dupMethod))
+            self.logger.warning("Duplicate methods implemented: {}".format(
+                    DEFAULT.dupMethodChoices))
 
     def build_graph(self):
         """
@@ -198,7 +232,6 @@ class SidecarPairing(object):
             A list of acquisition objects
         """
         acquisitions = []
-
         self.logger.info("Sidecars pairing:")
         for sidecar, descriptions in iteritems(self.graph):
             sidecarName = os.path.basename(sidecar.root)
@@ -206,11 +239,22 @@ class SidecarPairing(object):
             #only one description for the sidecar
             if len(descriptions) == 1:
                 desc = descriptions[0]
-                acq = Acquisition(participant, srcSidecar=sidecar, **desc)
+
+                if self._dcmTagLabel:
+                    desc = self.addDcmTagLabel(sidecar, desc)
+
+                acq = Acquisition(participant, srcSidecar=sidecar,
+                                    **desc)
+
+                if acq.intendedFor == [None]:
+                    acqIndex = self.getAcqIndex(desc)
+                    dst = acq.dstRoot.split(os.path.sep)[1:]
+                    dst = os.path.sep.join(dst)
+                    self.dstImage[acqIndex].append(dst)
+
                 acquisitions.append(acq)
 
-                self.logger.info("{}  <-  {}".format(
-                    acq.suffix, sidecarName))
+                self.logger.info("{}  <-  {}".format(acq.suffix, sidecarName))
 
             #sidecar with no link
             elif len(descriptions) == 0:
@@ -224,15 +268,52 @@ class SidecarPairing(object):
                     acq = Acquisition(participant, **desc)
                     self.logger.warning("    ->  " + acq.suffix)
 
+        #fmap dataType at the end of acquisitions
+        for idx, acq in enumerate(acquisitions):
+            if acq.dataType == "fmap":
+                 acquisitions.append(acquisitions.pop(idx))
+
         self.acquisitions = acquisitions
         return acquisitions
 
+    def addDcmTagLabel(self, sidecar, desc):
+        """
+        Add TaskLabel to customLabels
+        """
+        descWithTask = desc.copy()
+        if self.dcmTagLabel["dcmTag"] in sidecar.data.keys():
+            dcmTag = sidecar.data.get(self.dcmTagLabel["dcmTag"])
+            patterns = self.dcmTagLabel["expression"]
+
+            if isinstance(patterns, list):
+                tmpDcmTagLabel = []
+                for pattern in patterns :
+                    dcmTagLabel = re.search(pattern, dcmTag)
+                    if dcmTagLabel:
+                        dcmTagLabel = '_'.join(map(str, dcmTagLabel.groups()))
+                        tmpDcmTagLabel.append(dcmTagLabel)
+
+                dcmTagLabel = '_'.join(tmpDcmTagLabel)
+            else:
+                dcmTagLabel = re.search(pattern, dcmTag)
+                if dcmTagLabel:
+                    dcmTagLabel = '_'.join(map(str, dcmTagLabel.groups()))
+
+
+            if "customLabels" in desc.keys():
+                descWithTask["customLabels"] = dcmTagLabel + '_' + descWithTask["customLabels"]
+            else:
+                descWithTask["customLabels"] = dcmTagLabel
+
+        return descWithTask
 
     def find_runs(self):
         """
         Check if there is duplicate destination roots in the acquisitions
         and add '_run-' to the customLabels of the acquisition
         """
+
+
         def duplicates(seq):
             """ Find duplicate items in a list
 
@@ -253,11 +334,26 @@ class SidecarPairing(object):
                     yield key, locs
 
         dstRoots = [_.dstRoot for _ in self.acquisitions]
+
+        templateDup = DEFAULT.runTpl
+        if self.dupMethod == 'dup':
+            templateDup = DEFAULT.dupTpl
+
         for dstRoot, dup in duplicates(dstRoots):
             self.logger.info("{} has {} runs".format(dstRoot, len(dup)))
-            self.logger.info("Adding 'run' information to the acquisition")
+            self.logger.info("Adding {} information to the acquisition".format(self.dupMethod))
 
-            for runNum, acqInd in enumerate(dup):
-                runStr = DEFAULT.runTpl.format(runNum+1)
-                self.acquisitions[acqInd].customLabels += runStr
+            if self.dupMethod == 'dup':
+                dup = dup[0:-1]
+                for runNum, acqInd in enumerate(dup):
+                    runStr = templateDup.format(runNum+1)
+                    self.acquisitions[acqInd].modalityLabel += runStr
+            else:
+                for runNum, acqInd in enumerate(dup):
+                    runStr = templateDup.format(runNum+1)
+                    self.acquisitions[acqInd].customLabels += runStr
 
+    def getAcqIndex(self, description):
+        for idx, desc in enumerate(self.descriptions):
+            if isDictsEqual(desc, description):
+                return idx

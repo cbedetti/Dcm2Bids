@@ -109,14 +109,16 @@ class Dcm2bids(object):
         sidecars = sorted(sidecars)
 
         parser = SidecarPairing(sidecars, self.config["descriptions"],
-                self.config.get("searchMethod", DEFAULT.searchMethod))
+                self.config.get("searchMethod", DEFAULT.searchMethod),
+                self.config.get("dcmTagLabel"),
+                self.config.get("dupMethod", DEFAULT.duplicateMethod))
         parser.build_graph()
         parser.build_acquisitions(self.participant)
         parser.find_runs()
 
         self.logger.info("moving acquisitions into BIDS folder")
         for acq in parser.acquisitions:
-            self.move(acq)
+            self.move(acq, parser.dstImage)
 
         check_latest()
         check_latest("dcm2niix")
@@ -124,7 +126,7 @@ class Dcm2bids(object):
         return os.EX_OK
 
 
-    def move(self, acquisition):
+    def move(self, acquisition, dstImages):
         """
         """
         for srcFile in glob(acquisition.srcRoot + ".*"):
@@ -162,11 +164,10 @@ class Dcm2bids(object):
 
             #use
             elif ext == ".json":
-                data = acquisition.dstSidecarData(self.config["descriptions"])
+                data = acquisition.dstSidecarData(dstImages)
                 save_json(dstFile, data)
                 os.remove(srcFile)
 
             #just move
             else:
                 os.rename(srcFile, dstFile)
-

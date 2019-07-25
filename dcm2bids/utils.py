@@ -33,7 +33,11 @@ class DEFAULT(object):
     compKeys = ["SeriesNumber", "AcquisitionTime", "SidecarFilename"]
     searchMethod = "fnmatch"
     searchMethodChoices = ["fnmatch", "re"]
+
+    duplicateMethod = "run"
+    dupMethodChoices = ["run", "dup"]
     runTpl = "_run-{:02d}"
+    dupTpl = "_dup-{:02d}"
 
     #misc
     tmpDirName = "tmp_dcm2bids"
@@ -108,3 +112,9 @@ def run_shell_command(commandLine):
     logger.info("Running {}".format(commandLine))
     return check_output(shlex.split(commandLine))
 
+def isDictsEqual(dict_a, dict_b):
+    for i, j in zip(dict_a.items(), dict_b.items()):
+        if i != j:
+            return False
+
+    return True

@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 
-
 from collections import OrderedDict
 from future.utils import iteritems
 from os.path import join as opj
@@ -128,6 +127,7 @@ class Acquisition(object):
         self.customLabels = customLabels
         self.srcSidecar = srcSidecar
         self.sidecarChanges = sidecarChanges
+
         if intendedFor is None:
             self.intendedFor = IntendedFor
         else:
@@ -223,7 +223,7 @@ class Acquisition(object):
             self._intendedFor = [value,]
 
 
-    def dstSidecarData(self, descriptions):
+    def dstSidecarData(self, dstImages):
         """
         """
         data = self.srcSidecar.origData
@@ -233,22 +233,17 @@ class Acquisition(object):
         if self.intendedFor != [None]:
             intendedValue = []
             for index in self.intendedFor:
-                intendedDesc = descriptions[index]
+                for nii in dstImages[index]:
+                    session = self.participant.session
+                    niiFile = nii
+                    niiFile += ".nii.gz"
 
-                session = self.participant.session
-                dataType = intendedDesc["dataType"]
-
-                niiFile = self.participant.prefix
-                niiFile += self.prepend(intendedDesc.get("customLabels", ""))
-                niiFile += self.prepend(intendedDesc["modalityLabel"])
-                niiFile += ".nii.gz"
-
-                intendedValue.append(
-                        opj(session, dataType, niiFile).replace("\\", "/"))
+                    intendedValue.append(
+                        opj(session, niiFile).replace("\\", "/"))
 
             if len(intendedValue) == 1:
                 data["IntendedFor"] = intendedValue[0]
-            else:
+            elif len(intendedValue) > 1:
                 data["IntendedFor"] = intendedValue
 
         #sidecarChanges
