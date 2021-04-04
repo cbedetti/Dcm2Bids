@@ -90,10 +90,12 @@ class SidecarPairing(object):
     """
 
     def __init__(self, sidecars, descriptions, searchMethod=DEFAULT.searchMethod,
-                 caseSensitive=DEFAULT.caseSensitive):
+                 caseSensitive=DEFAULT.caseSensitive,
+                 dupMethod=DEFAULT.dupMethod):
         self.logger = logging.getLogger(__name__)
 
         self._searchMethod = ""
+        self._dupMethod = ""
         self.graph = OrderedDict()
         self.aquisitions = []
 
@@ -101,10 +103,15 @@ class SidecarPairing(object):
         self.descriptions = descriptions
         self.searchMethod = searchMethod
         self.caseSensitive = caseSensitive
+        self.dupMethod = dupMethod
 
     @property
     def searchMethod(self):
         return self._searchMethod
+
+    @property
+    def dupMethod(self):
+        return self._dupMethod
 
     @searchMethod.setter
     def searchMethod(self, value):
@@ -114,16 +121,29 @@ class SidecarPairing(object):
         """
         if value in DEFAULT.searchMethodChoices:
             self._searchMethod = value
-
         else:
             self._searchMethod = DEFAULT.searchMethod
             self.logger.warning("'%s' is not a search method implemented", value)
             self.logger.warning(
                 "Falling back to default: %s", DEFAULT.searchMethod
             )
+
+    @dupMethod.setter
+    def dupMethod(self, value):
+        """
+        Checks if the duplicate method is implemented
+        Warns the user if not and fall back to default
+        """
+        if value in DEFAULT.dupMethodChoices:
+            self._dupMethod = value
+        else:
+            self._dupMethod = DEFAULT.dupMethod
             self.logger.warning(
-                "Search methods implemented: %s", DEFAULT.searchMethodChoices
-            )
+                    "%s is not a duplicate method implemented", value)
+            self.logger.warning(
+                    "Falling back to default: %s", DEFAULT.dupMethod)
+            self.logger.warning("Duplicate methods implemented: %s",
+                    DEFAULT.dupMethodChoices)
 
     @property
     def caseSensitive(self):
@@ -246,6 +266,7 @@ class SidecarPairing(object):
         and add '_run-' to the customLabels of the acquisition
         """
 
+
         def duplicates(seq):
             """ Find duplicate items in a list
 
@@ -266,9 +287,21 @@ class SidecarPairing(object):
                     yield key, locs
 
         dstRoots = [_.dstRoot for _ in self.acquisitions]
+
+        templateDup = DEFAULT.runTpl
+        if self.dupMethod == 'dup':
+            templateDup = DEFAULT.dupTpl
+
         for dstRoot, dup in duplicates(dstRoots):
             self.logger.info("%s has %s runs", dstRoot, len(dup))
-            self.logger.info("Adding 'run' information to the acquisition")
-            for runNum, acqInd in enumerate(dup):
-                runStr = DEFAULT.runTpl.format(runNum + 1)
-                self.acquisitions[acqInd].customLabels += runStr
+            self.logger.info("Adding %s information to the acquisition", self.dupMethod)
+
+            if self.dupMethod == 'dup':
+                dup = dup[0:-1]
+                for runNum, acqInd in enumerate(dup):
+                    runStr = templateDup.format(runNum+1)
+                    self.acquisitions[acqInd].modalityLabel += runStr
+            else:
+                for runNum, acqInd in enumerate(dup):
+                    runStr = templateDup.format(runNum+1)
+                    self.acquisitions[acqInd].customLabels += runStr

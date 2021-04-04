@@ -34,7 +34,11 @@ class DEFAULT(object):
     compKeys = ["SeriesNumber", "AcquisitionTime", "SidecarFilename"]
     searchMethod = "fnmatch"
     searchMethodChoices = ["fnmatch", "re"]
+
+    dupMethod = "run"
+    dupMethodChoices = ["run", "dup"]
     runTpl = "_run-{:02d}"
+    dupTpl = "_dup-{:02d}"
     caseSensitive = True
 
     # misc

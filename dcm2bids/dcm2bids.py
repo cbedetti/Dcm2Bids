@@ -130,7 +130,8 @@ class Dcm2bids(object):
             sidecars,
             self.config["descriptions"],
             self.config.get("searchMethod", DEFAULT.searchMethod),
-            self.config.get("caseSensitive", DEFAULT.caseSensitive)
+            self.config.get("caseSensitive", DEFAULT.caseSensitive),
+            self.config.get("duplicateMethod", DEFAULT.dupMethod),
         )
         parser.build_graph()
         parser.build_acquisitions(self.participant)
@@ -278,7 +279,6 @@ def main():
         The anonymizer option no longer exists from the script in this release
         It is still possible to deface the anatomical nifti images
         Please add "defaceTpl" key in the congifuration file
-
         For example, if you use the last version of pydeface, add:
         "defaceTpl": "pydeface --outfile {dstFile} {srcFile}"
         It is a template string and dcm2bids will replace {srcFile} and {dstFile}
